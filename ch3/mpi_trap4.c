@@ -31,11 +31,11 @@
 #include <mpi.h>
 
 /* Build a derived datatype for distributing the input data */
-void Build_mpi_type(double *a_p, double *b_p, int *n_p,
+void Build_mpi_type(double *limit_p, int *n_p,
                     MPI_Datatype *input_mpi_t_p);
 
 /* Get the input values */
-void Get_input(int my_rank, int comm_sz, double *a_p, double *b_p,
+void Get_input(int my_rank, int comm_sz, double *limit_p,
                int *n_p);
 
 /* Calculate local integral  */
@@ -50,6 +50,7 @@ int main(void)
   int my_rank, comm_sz, n, local_n;
   double a, b, h, local_a, local_b;
   double local_int, total_int;
+  double limit[2];
 
   /* Let the system do what it needs to start up MPI */
   MPI_Init(NULL, NULL);
@@ -60,7 +61,10 @@ int main(void)
   /* Find out how many processes are being used */
   MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
 
-  Get_input(my_rank, comm_sz, &a, &b, &n);
+  Get_input(my_rank, comm_sz, limit, &n);
+
+  a = limit[0];
+  b = limit[1];
 
   h = (b - a) / n;       /* h is the same for all processes */
   local_n = n / comm_sz; /* So is the number of trapezoids  */
@@ -100,23 +104,21 @@ int main(void)
  * Output args:  input_mpi_t_p:  the new MPI datatype
  */
 void Build_mpi_type(
-    double *a_p /* in  */,
-    double *b_p /* in  */,
+    double *limit_p /* in  */,
     int *n_p /* in  */,
     MPI_Datatype *input_mpi_t_p /* out */)
 {
 
-  int array_of_blocklengths[3] = {1, 1, 1};
-  MPI_Datatype array_of_types[3] = {MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
-  MPI_Aint a_addr, b_addr, n_addr;
-  MPI_Aint array_of_displacements[3] = {0};
+  int array_of_blocklengths[2] = {2, 1};
+  MPI_Datatype array_of_types[2] = {MPI_DOUBLE, MPI_INT};
+  MPI_Aint a_addr, n_addr;
+  MPI_Aint array_of_displacements[2] = {0};
 
-  MPI_Get_address(a_p, &a_addr);
-  MPI_Get_address(b_p, &b_addr);
+  MPI_Get_address(limit_p, &a_addr);
   MPI_Get_address(n_p, &n_addr);
-  array_of_displacements[1] = b_addr - a_addr;
-  array_of_displacements[2] = n_addr - a_addr;
-  MPI_Type_create_struct(3, array_of_blocklengths,
+
+  array_of_displacements[1] = n_addr - a_addr;
+  MPI_Type_create_struct(2, array_of_blocklengths,
                          array_of_displacements, array_of_types,
                          input_mpi_t_p);
   MPI_Type_commit(input_mpi_t_p);
@@ -135,20 +137,19 @@ void Build_mpi_type(
 void Get_input(
     int my_rank /* in  */,
     int comm_sz /* in  */,
-    double *a_p /* out */,
-    double *b_p /* out */,
+    double *limit_p /* out */,
     int *n_p /* out */)
 {
   MPI_Datatype input_mpi_t;
 
-  Build_mpi_type(a_p, b_p, n_p, &input_mpi_t);
+  Build_mpi_type(limit_p, n_p, &input_mpi_t);
 
   if (my_rank == 0)
   {
     printf("Enter a, b, and n\n");
-    scanf("%lf %lf %d", a_p, b_p, n_p);
+    scanf("%lf %lf %d", limit_p, limit_p + 1, n_p);
   }
-  MPI_Bcast(a_p, 1, input_mpi_t, 0, MPI_COMM_WORLD);
+  MPI_Bcast(limit_p, 1, input_mpi_t, 0, MPI_COMM_WORLD);
 
   MPI_Type_free(&input_mpi_t);
 } /* Get_input */
